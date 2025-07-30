@@ -1,0 +1,1480 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>GRASIAS</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+  <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;600;700&display=swap" rel="stylesheet">
+  
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+    import { getDatabase, ref, set, get, child, onValue, push, remove, update } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
+    import { getAuth, signInWithPopup, GoogleAuthProvider } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyAekz29R9IwY1pygd4Mic5AX8XZ7A7Z4Fs",
+      authDomain: "grasias-d7830.firebaseapp.com",
+      databaseURL: "https://grasias-d7830-default-rtdb.asia-southeast1.firebasedatabase.app",
+      projectId: "grasias-d7830",
+      storageBucket: "grasias-d7830.appspot.com",
+      messagingSenderId: "134413476604",
+      appId: "1:134413476604:web:ab1acfa69c025218cbad79",
+      measurementId: "G-6QBYM41CJ1"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db = getDatabase(app);
+    const auth = getAuth(app);
+    const provider = new GoogleAuthProvider();
+
+    // متغيرات عامة
+    window.currentUser = null;
+    window.currentRole = null;
+    window.db = db;
+    window.auth = auth;
+
+    window.signInWithGoogle = () => {
+      const roleInput = document.querySelector('input[name="role"]:checked');
+      if (!roleInput) {
+        alert("يرجى اختيار الدور قبل تسجيل الدخول");
+        return;
+      }
+      window.currentRole = roleInput.value;
+
+      signInWithPopup(auth, provider)
+        .then((result) => {
+          const user = result.user;
+          window.currentUser = user;
+          const userRef = ref(db, `users/${user.uid}`);
+
+          get(userRef).then((snapshot) => {
+            if (snapshot.exists()) {
+              const userData = snapshot.val();
+              window.currentRole = userData.role;
+              showPage("mapPage");
+              loadMap(user.displayName);
+              startLocationTracking();
+            } else {
+              set(userRef, {
+                name: user.displayName,
+                email: user.email,
+                role: window.currentRole,
+                createdAt: new Date().toISOString()
+              });
+              
+              if (window.currentRole === "rakib") {
+                showPage("passengerPage");
+              } else {
+                showPage("driverPage");
+              }
+            }
+          });
+        })
+        .catch((error) => {
+          console.error("خطأ في تسجيل الدخول:", error);
+          alert("فشل تسجيل الدخول: " + error.message);
+        });
+    };
+  </script>
+  
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+    
+    body {
+      font-family: 'Cairo', sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      margin: 0;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      direction: rtl;
+      padding: 20px;
+    }
+    
+    .box {
+      background: white;
+      padding: 30px 25px;
+      border-radius: 20px;
+      box-shadow: 0 15px 50px rgba(0,0,0,0.2);
+      width: 100%;
+      max-width: 400px;
+      text-align: center;
+      animation: fadeIn 0.6s ease-in-out;
+    }
+    
+    @keyframes fadeIn {
+      from { 
+        opacity: 0; 
+        transform: translateY(30px); 
+      }
+      to { 
+        opacity: 1; 
+        transform: translateY(0); 
+      }
+    }
+    
+    h2 { 
+      margin-bottom: 25px; 
+      color: #4a5568; 
+      font-weight: 600;
+      font-size: 24px;
+    }
+    
+    input, button, textarea {
+      width: 100%;
+      padding: 15px;
+      border-radius: 12px;
+      margin-bottom: 15px;
+      font-size: 16px;
+      border: 2px solid #e2e8f0;
+      transition: all 0.3s ease;
+      font-family: 'Cairo', sans-serif;
+    }
+    
+    input:focus, textarea:focus {
+      border-color: #667eea;
+      outline: none;
+      box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+    }
+    
+    button {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      border: none;
+      cursor: pointer;
+      font-weight: 600;
+      transition: transform 0.2s ease;
+    }
+    
+    button:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 25px rgba(102, 126, 234, 0.3);
+    }
+    
+    button:active {
+      transform: translateY(0);
+    }
+    
+    .choice { 
+      text-align: right; 
+      margin: 25px 0; 
+    }
+    
+    .choice label { 
+      display: flex;
+      align-items: center;
+      margin-bottom: 12px; 
+      font-size: 16px;
+      cursor: pointer;
+      padding: 10px;
+      border-radius: 8px;
+      transition: background-color 0.2s ease;
+    }
+    
+    .choice label:hover {
+      background-color: #f7fafc;
+    }
+    
+    .choice input[type="radio"] {
+      width: auto;
+      margin-left: 10px;
+      margin-bottom: 0;
+    }
+    
+    .declaration-box {
+      margin-top: 20px;
+      background: #f8f9fa;
+      padding: 20px;
+      border-radius: 12px;
+      text-align: right;
+      display: none;
+      border-right: 4px solid #667eea;
+      line-height: 1.6;
+    }
+    
+    #mapPage {
+      display: none;
+      height: 100vh;
+      width: 100vw;
+      flex-direction: row;
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+    }
+    
+    #map { 
+      width: 65%; 
+      height: 100vh; 
+    }
+    
+    .sidebar {
+      width: 35%;
+      background: #fff;
+      padding: 30px;
+      overflow-y: auto;
+      box-shadow: -2px 0 10px rgba(0,0,0,0.1);
+    }
+    
+    .sidebar h3 {
+      color: #4a5568;
+      margin-bottom: 20px;
+      font-size: 20px;
+    }
+    
+    .sidebar label {
+      display: block;
+      margin-bottom: 8px;
+      font-weight: 600;
+      color: #2d3748;
+    }
+    
+    #passengerPage, #driverPage, #mapPage {
+      display: none;
+    }
+    
+    .file-input-wrapper {
+      position: relative;
+      margin-bottom: 15px;
+    }
+    
+    .file-input-wrapper input[type="file"] {
+      opacity: 0;
+      position: absolute;
+      z-index: -1;
+    }
+    
+    .file-input-label {
+      display: block;
+      padding: 15px;
+      background: #f8f9fa;
+      border: 2px dashed #cbd5e0;
+      border-radius: 12px;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.3s ease;
+    }
+    
+    .file-input-label:hover {
+      border-color: #667eea;
+      background: #edf2f7;
+    }
+    
+    .success-message {
+      background: #c6f6d5;
+      color: #22543d;
+      padding: 12px;
+      border-radius: 8px;
+      margin-bottom: 15px;
+      display: none;
+    }
+    
+    .error-message {
+      background: #fed7d7;
+      color: #742a2a;
+      padding: 12px;
+      border-radius: 8px;
+      margin-bottom: 15px;
+      display: none;
+    }
+
+    /* أنماط جديدة للميزات المضافة */
+    .driver-card {
+      background: white;
+      border-radius: 12px;
+      padding: 15px;
+      margin-bottom: 15px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+      border: 2px solid transparent;
+      cursor: pointer;
+      transition: all 0.3s ease;
+    }
+
+    .driver-card:hover {
+      border-color: #667eea;
+      transform: translateY(-2px);
+    }
+
+    .driver-card.selected {
+      border-color: #48bb78;
+      background: #f0fff4;
+    }
+
+    .driver-info {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 10px;
+    }
+
+    .driver-name {
+      font-weight: 600;
+      color: #2d3748;
+      font-size: 16px;
+    }
+
+    .driver-distance {
+      background: #667eea;
+      color: white;
+      padding: 4px 8px;
+      border-radius: 6px;
+      font-size: 12px;
+    }
+
+    .car-info {
+      color: #718096;
+      font-size: 14px;
+      margin-bottom: 10px;
+    }
+
+    .driver-actions {
+      display: flex;
+      gap: 10px;
+    }
+
+    .action-btn {
+      flex: 1;
+      padding: 8px 12px;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 600;
+      transition: all 0.2s ease;
+    }
+
+    .call-btn {
+      background: #48bb78;
+      color: white;
+    }
+
+    .call-btn:hover {
+      background: #38a169;
+    }
+
+    .chat-btn {
+      background: #4299e1;
+      color: white;
+    }
+
+    .chat-btn:hover {
+      background: #3182ce;
+    }
+
+    .select-btn {
+      background: #667eea;
+      color: white;
+    }
+
+    .select-btn:hover {
+      background: #5a67d8;
+    }
+
+    .notification {
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      background: white;
+      padding: 20px;
+      border-radius: 12px;
+      box-shadow: 0 8px 25px rgba(0,0,0,0.15);
+      border-right: 4px solid #667eea;
+      z-index: 1000;
+      max-width: 350px;
+      animation: slideIn 0.3s ease-out;
+    }
+
+    @keyframes slideIn {
+      from {
+        transform: translateX(100%);
+        opacity: 0;
+      }
+      to {
+        transform: translateX(0);
+        opacity: 1;
+      }
+    }
+
+    .notification-title {
+      font-weight: 600;
+      color: #2d3748;
+      margin-bottom: 10px;
+    }
+
+    .notification-content {
+      color: #4a5568;
+      margin-bottom: 15px;
+      line-height: 1.5;
+    }
+
+    .notification-actions {
+      display: flex;
+      gap: 10px;
+    }
+
+    .accept-btn {
+      background: #48bb78;
+      color: white;
+      border: none;
+      padding: 8px 16px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-weight: 600;
+    }
+
+    .reject-btn {
+      background: #e53e3e;
+      color: white;
+      border: none;
+      padding: 8px 16px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-weight: 600;
+    }
+
+    .chat-container {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      width: 300px;
+      height: 400px;
+      background: white;
+      border-radius: 12px;
+      box-shadow: 0 8px 25px rgba(0,0,0,0.15);
+      display: none;
+      flex-direction: column;
+      z-index: 1000;
+    }
+
+    .chat-header {
+      background: #667eea;
+      color: white;
+      padding: 15px;
+      border-radius: 12px 12px 0 0;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .chat-messages {
+      flex: 1;
+      padding: 15px;
+      overflow-y: auto;
+      max-height: 250px;
+    }
+
+    .chat-input-container {
+      padding: 15px;
+      border-top: 1px solid #e2e8f0;
+      display: flex;
+      gap: 10px;
+    }
+
+    .chat-input {
+      flex: 1;
+      padding: 8px 12px;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      margin: 0;
+    }
+
+    .send-btn {
+      background: #667eea;
+      color: white;
+      border: none;
+      padding: 8px 12px;
+      border-radius: 8px;
+      cursor: pointer;
+      margin: 0;
+      width: auto;
+    }
+
+    .message {
+      margin-bottom: 10px;
+      padding: 8px 12px;
+      border-radius: 8px;
+      max-width: 80%;
+    }
+
+    .message.sent {
+      background: #667eea;
+      color: white;
+      margin-left: auto;
+      text-align: left;
+    }
+
+    .message.received {
+      background: #f7fafc;
+      color: #2d3748;
+      margin-right: auto;
+    }
+
+    .trip-status {
+      background: #e6fffa;
+      border: 1px solid #81e6d9;
+      border-radius: 8px;
+      padding: 15px;
+      margin-bottom: 15px;
+      text-align: center;
+    }
+
+    .trip-status.active {
+      background: #f0fff4;
+      border-color: #9ae6b4;
+    }
+
+    @media (max-width: 768px) {
+      #mapPage {
+        flex-direction: column;
+      }
+      
+      #map {
+        width: 100%;
+        height: 60vh;
+      }
+      
+      .sidebar {
+        width: 100%;
+        height: 40vh;
+        padding: 20px;
+      }
+      
+      .box {
+        margin: 10px;
+        padding: 20px;
+      }
+
+      .chat-container {
+        width: 90%;
+        right: 5%;
+        left: 5%;
+      }
+
+      .notification {
+        right: 10px;
+        left: 10px;
+        max-width: none;
+      }
+    }
+  </style>
+</head>
+<body>
+
+<!-- صفحة تسجيل الدخول -->
+<div class="box" id="loginPage">
+  <h2>مرحباً بك في GRASIAS</h2>
+  <div class="choice">
+    <label>
+      <input type="radio" name="role" value="sayeq"> 
+      <span>🚗 سائق</span>
+    </label>
+    <label>
+      <input type="radio" name="role" value="rakib"> 
+      <span>🧍‍♀️ راكب</span>
+    </label>
+  </div>
+  <button onclick="signInWithGoogle()">🔐 تسجيل الدخول باستخدام Google</button>
+</div>
+
+<!-- صفحة معلومات الراكب -->
+<div class="box" id="passengerPage">
+  <h2>معلومات الراكب</h2>
+  <div class="success-message" id="passengerSuccess"></div>
+  <div class="error-message" id="passengerError"></div>
+  
+  <input type="text" id="passengerName" placeholder="الاسم الكامل" required>
+  <input type="tel" id="passengerPhone" placeholder="رقم الهاتف (مثال: 0612345678)" required>
+  
+  <div class="file-input-wrapper">
+    <input type="file" id="passengerIdCard" accept="image/*" />
+    <label for="passengerIdCard" class="file-input-label">
+      📄 اختر صورة بطاقة الهوية
+    </label>
+  </div>
+  
+  <button onclick="submitPassengerInfo()">متابعة ➡️</button>
+</div>
+
+<!-- صفحة معلومات السائق -->
+<div class="box" id="driverPage">
+  <h2>معلومات السائق</h2>
+  <div class="success-message" id="driverSuccess"></div>
+  <div class="error-message" id="driverError"></div>
+  
+  <input type="text" id="driverName" placeholder="الاسم الكامل" required>
+  <input type="tel" id="driverPhone" placeholder="رقم الهاتف (مثال: 0612345678)" required>
+  <input type="text" id="carType" placeholder="نوع السيارة (مثال: تويوتا كورولا)" required>
+  <input type="text" id="carColor" placeholder="لون السيارة" required>
+  <input type="text" id="plateNumber" placeholder="رقم لوحة السيارة" required>
+  
+  <div class="file-input-wrapper">
+    <input type="file" id="driverId" accept="image/*" required>
+    <label for="driverId" class="file-input-label">
+      📄 اختر صورة بطاقة الهوية
+    </label>
+  </div>
+  
+  <div class="file-input-wrapper">
+    <input type="file" id="carCheck" accept="image/*" required>
+    <label for="carCheck" class="file-input-label">
+      🔧 اختر صورة التشخيص التقني
+    </label>
+  </div>
+  
+  <button onclick="showDeclaration()">📜 عرض التعهد</button>
+  <div class="declaration-box" id="declarationBox"></div>
+  <button onclick="startDriverMap()">متابعة ➡️</button>
+</div>
+
+<!-- صفحة الخريطة -->
+<div id="mapPage">
+  <div id="map"></div>
+  <div class="sidebar">
+    <div id="tripStatus" class="trip-status" style="display: none;">
+      <div id="tripStatusText"></div>
+    </div>
+    
+    <h3 id="sidebarTitle">🚗 تفاصيل الرحلة</h3>
+    
+    <!-- محتوى الراكب -->
+    <div id="passengerContent">
+      <label>الوجهة:</label>
+      <input type="text" id="destination" placeholder="أدخل وجهتك (مثال: جامعة الجزائر)">
+      
+      <label>عدد الركاب:</label>
+      <input type="number" id="passengers" min="1" max="8" placeholder="عدد الركاب" value="1">
+      
+      <label>ملاحظات إضافية:</label>
+      <textarea id="notes" placeholder="أي ملاحظات خاصة..." style="height: 80px; resize: vertical;"></textarea>
+      
+      <div id="nearbyDrivers">
+        <h4>السائقون القريبون:</h4>
+        <div id="driversList"></div>
+      </div>
+    </div>
+
+    <!-- محتوى السائق -->
+    <div id="driverContent" style="display: none;">
+      <label>حالة السائق:</label>
+      <select id="driverStatus" onchange="updateDriverStatus()">
+        <option value="available">متاح</option>
+        <option value="busy">مشغول</option>
+        <option value="offline">غير متصل</option>
+      </select>
+      
+      <label>عدد المقاعد المتاحة:</label>
+      <input type="number" id="availableSeats" min="1" max="8" value="4">
+      
+      <label>ملاحظات السائق:</label>
+      <textarea id="driverNotes" placeholder="معلومات إضافية للركاب..." style="height: 60px;"></textarea>
+    </div>
+    
+    <button onclick="activateRide()" id="activateBtn">🚗 تفعيل الرحلة</button>
+    <button onclick="logout()" style="background: #e53e3e; margin-top: 10px;">🚪 تسجيل الخروج</button>
+  </div>
+</div>
+
+<!-- نافذة الدردشة -->
+<div id="chatContainer" class="chat-container">
+  <div class="chat-header">
+    <span id="chatTitle">الدردشة</span>
+    <button onclick="closeChat()" style="background: none; border: none; color: white; cursor: pointer; padding: 0; margin: 0; width: auto;">✕</button>
+  </div>
+  <div id="chatMessages" class="chat-messages"></div>
+  <div class="chat-input-container">
+    <input type="text" id="chatInput" class="chat-input" placeholder="اكتب رسالتك...">
+    <button onclick="sendMessage()" class="send-btn">إرسال</button>
+  </div>
+</div>
+
+<script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+<script>
+  let currentMap = null;
+  let currentMarker = null;
+  let driversMarkers = [];
+  let passengersMarkers = [];
+  let currentLocation = null;
+  let selectedDriver = null;
+  let currentTrip = null;
+  let routeControl = null;
+
+  // أيقونات مخصصة للخريطة
+  const driverIcon = L.divIcon({
+    html: '🚗',
+    iconSize: [30, 30],
+    className: 'custom-div-icon'
+  });
+
+  const passengerIcon = L.divIcon({
+    html: '🧍‍♀️',
+    iconSize: [30, 30],
+    className: 'custom-div-icon'
+  });
+
+  function showPage(id) {
+    ["loginPage", "passengerPage", "driverPage", "mapPage"].forEach(p => {
+      document.getElementById(p).style.display = "none";
+    });
+    document.getElementById(id).style.display = id === "mapPage" ? "flex" : "block";
+  }
+
+  function showMessage(type, message, pagePrefix = '') {
+    const successEl = document.getElementById(pagePrefix + 'Success');
+    const errorEl = document.getElementById(pagePrefix + 'Error');
+    
+    if (type === 'success') {
+      successEl.textContent = message;
+      successEl.style.display = 'block';
+      errorEl.style.display = 'none';
+    } else {
+      errorEl.textContent = message;
+      errorEl.style.display = 'block';
+      successEl.style.display = 'none';
+    }
+    
+    setTimeout(() => {
+      successEl.style.display = 'none';
+      errorEl.style.display = 'none';
+    }, 5000);
+  }
+
+  function loadMap(userName) {
+    if (currentMap) {
+      currentMap.remove();
+    }
+    
+    currentMap = L.map('map').setView([28.0339, 1.6596], 6);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '© OpenStreetMap contributors'
+    }).addTo(currentMap);
+
+    // تخصيص المحتوى حسب نوع المستخدم
+    if (window.currentRole === 'rakib') {
+      document.getElementById('passengerContent').style.display = 'block';
+      document.getElementById('driverContent').style.display = 'none';
+      document.getElementById('sidebarTitle').textContent = '🧍‍♀️ طلب رحلة';
+      document.getElementById('activateBtn').textContent = '🔍 البحث عن سائق';
+    } else {
+      document.getElementById('passengerContent').style.display = 'none';
+      document.getElementById('driverContent').style.display = 'block';
+      document.getElementById('sidebarTitle').textContent = '🚗 لوحة السائق';
+      document.getElementById('activateBtn').textContent = '🚗 تفعيل الخدمة';
+    }
+
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(position => {
+        const lat = position.coords.latitude;
+        const lng = position.coords.longitude;
+        currentLocation = { lat, lng };
+        currentMap.setView([lat, lng], 14);
+
+        if (currentMarker) {
+          currentMap.removeLayer(currentMarker);
+        }
+        
+        const icon = window.currentRole === 'rakib' ? passengerIcon : driverIcon;
+        currentMarker = L.marker([lat, lng], { icon }).addTo(currentMap)
+          .bindPopup(`📍 ${userName}`)
+          .openPopup();
+
+        // بدء تتبع الموقع
+        startLocationTracking();
+      }, (error) => {
+        console.error("خطأ في تحديد الموقع:", error);
+        alert("⚠️ تعذر تحديد موقعك. يرجى التأكد من تفعيل خدمة الموقع.");
+      });
+    } else {
+      alert("⚠️ المتصفح لا يدعم تحديد الموقع.");
+    }
+  }
+
+  // تتبع الموقع المباشر
+  function startLocationTracking() {
+    if (!window.currentUser) return;
+
+    const locationRef = window.db.ref(`locations/${window.currentUser.uid}`);
+    
+    // تحديث الموقع كل 10 ثوان
+    setInterval(() => {
+      if (navigator.geolocation && currentLocation) {
+        navigator.geolocation.getCurrentPosition(position => {
+          const newLocation = {
+            lat: position.coords.latitude,
+            lng: position.coords.longitude,
+            role: window.currentRole,
+            name: window.currentUser.displayName,
+            timestamp: Date.now(),
+            status: window.currentRole === 'sayeq' ? 
+              (document.getElementById('driverStatus')?.value || 'available') : 'active'
+          };
+
+          // تحديث الموقع في Firebase
+          window.db.ref(`locations/${window.currentUser.uid}`).set(newLocation);
+          
+          // تحديث الموقع المحلي
+          currentLocation = { lat: newLocation.lat, lng: newLocation.lng };
+          
+          // تحديث العلامة على الخريطة
+          if (currentMarker) {
+            currentMarker.setLatLng([newLocation.lat, newLocation.lng]);
+          }
+        });
+      }
+    }, 10000);
+
+    // مراقبة مواقع المستخدمين الآخرين
+    if (window.currentRole === 'rakib') {
+      watchDrivers();
+    } else {
+      watchPassengers();
+    }
+
+    // مراقبة طلبات الرحلات
+    watchTripRequests();
+  }
+
+  // مراقبة السائقين للركاب
+  function watchDrivers() {
+    const driversRef = window.db.ref('locations');
+    driversRef.on('value', (snapshot) => {
+      const locations = snapshot.val();
+      updateDriversOnMap(locations);
+      updateDriversList(locations);
+    });
+  }
+
+  // مراقبة الركاب للسائقين
+  function watchPassengers() {
+    const passengersRef = window.db.ref('locations');
+    passengersRef.on('value', (snapshot) => {
+      const locations = snapshot.val();
+      updatePassengersOnMap(locations);
+    });
+  }
+
+  // تحديث السائقين على الخريطة
+  function updateDriversOnMap(locations) {
+    // إزالة العلامات القديمة
+    driversMarkers.forEach(marker => currentMap.removeLayer(marker));
+    driversMarkers = [];
+
+    if (!locations || !currentLocation) return;
+
+    Object.keys(locations).forEach(userId => {
+      const location = locations[userId];
+      if (location.role === 'sayeq' && location.status === 'available' && userId !== window.currentUser.uid) {
+        const distance = calculateDistance(currentLocation, location);
+        if (distance <= 10) { // السائقون في نطاق 10 كم
+          const marker = L.marker([location.lat, location.lng], { icon: driverIcon })
+            .addTo(currentMap)
+            .bindPopup(`🚗 ${location.name}<br>📍 المسافة: ${distance.toFixed(1)} كم`)
+            .on('click', () => selectDriverFromMap(userId, location));
+          
+          driversMarkers.push(marker);
+        }
+      }
+    });
+  }
+
+  // تحديث الركاب على الخريطة
+  function updatePassengersOnMap(locations) {
+    // إزالة العلامات القديمة
+    passengersMarkers.forEach(marker => currentMap.removeLayer(marker));
+    passengersMarkers = [];
+
+    if (!locations || !currentLocation) return;
+
+    Object.keys(locations).forEach(userId => {
+      const location = locations[userId];
+      if (location.role === 'rakib' && userId !== window.currentUser.uid) {
+        const distance = calculateDistance(currentLocation, location);
+        if (distance <= 15) { // الركاب في نطاق 15 كم
+          const marker = L.marker([location.lat, location.lng], { icon: passengerIcon })
+            .addTo(currentMap)
+            .bindPopup(`🧍‍♀️ ${location.name}<br>📍 المسافة: ${distance.toFixed(1)} كم`);
+          
+          passengersMarkers.push(marker);
+        }
+      }
+    });
+  }
+
+  // تحديث قائمة السائقين
+  function updateDriversList(locations) {
+    const driversList = document.getElementById('driversList');
+    if (!driversList || !locations || !currentLocation) return;
+
+    const nearbyDrivers = [];
+    Object.keys(locations).forEach(userId => {
+      const location = locations[userId];
+      if (location.role === 'sayeq' && location.status === 'available' && userId !== window.currentUser.uid) {
+        const distance = calculateDistance(currentLocation, location);
+        if (distance <= 10) {
+          nearbyDrivers.push({ userId, location, distance });
+        }
+      }
+    });
+
+    // ترتيب السائقين حسب المسافة
+    nearbyDrivers.sort((a, b) => a.distance - b.distance);
+
+    driversList.innerHTML = '';
+    if (nearbyDrivers.length === 0) {
+      driversList.innerHTML = '<p style="text-align: center; color: #718096;">لا يوجد سائقون متاحون في المنطقة</p>';
+      return;
+    }
+
+    nearbyDrivers.forEach(({ userId, location, distance }) => {
+      const driverCard = document.createElement('div');
+      driverCard.className = 'driver-card';
+      driverCard.innerHTML = `
+        <div class="driver-info">
+          <div class="driver-name">🚗 ${location.name}</div>
+          <div class="driver-distance">${distance.toFixed(1)} كم</div>
+        </div>
+        <div class="car-info">
+          <div>📱 متاح للتواصل</div>
+        </div>
+        <div class="driver-actions">
+          <button class="action-btn call-btn" onclick="callDriver('${userId}')">📞 اتصال</button>
+          <button class="action-btn chat-btn" onclick="openChat('${userId}', '${location.name}')">💬 دردشة</button>
+          <button class="action-btn select-btn" onclick="selectDriver('${userId}', '${location.name}', ${distance})">اختيار</button>
+        </div>
+      `;
+      driversList.appendChild(driverCard);
+    });
+  }
+
+  // حساب المسافة بين نقطتين
+  function calculateDistance(pos1, pos2) {
+    const R = 6371; // نصف قطر الأرض بالكيلومتر
+    const dLat = (pos2.lat - pos1.lat) * Math.PI / 180;
+    const dLon = (pos2.lng - pos1.lng) * Math.PI / 180;
+    const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+              Math.cos(pos1.lat * Math.PI / 180) * Math.cos(pos2.lat * Math.PI / 180) *
+              Math.sin(dLon/2) * Math.sin(dLon/2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    return R * c;
+  }
+
+  // اختيار السائق من الخريطة
+  function selectDriverFromMap(driverId, driverLocation) {
+    const distance = calculateDistance(currentLocation, driverLocation);
+    selectDriver(driverId, driverLocation.name, distance);
+  }
+
+  // اختيار السائق
+  function selectDriver(driverId, driverName, distance) {
+    if (!window.currentUser) return;
+
+    const destination = document.getElementById('destination').value.trim();
+    const passengers = document.getElementById('passengers').value;
+    const notes = document.getElementById('notes').value.trim();
+
+    if (!destination) {
+      alert('يرجى إدخال الوجهة أولاً');
+      return;
+    }
+
+    // إنشاء طلب رحلة
+    const tripRequest = {
+      passengerId: window.currentUser.uid,
+      passengerName: window.currentUser.displayName,
+      driverId: driverId,
+      driverName: driverName,
+      destination: destination,
+      passengers: parseInt(passengers),
+      notes: notes,
+      distance: distance.toFixed(1),
+      status: 'pending',
+      timestamp: Date.now(),
+      passengerLocation: currentLocation
+    };
+
+    // حفظ الطلب في Firebase
+    const tripRef = window.db.ref('tripRequests').push();
+    tripRef.set(tripRequest).then(() => {
+      selectedDriver = driverId;
+      showNotification('تم إرسال الطلب', `تم إرسال طلب الرحلة إلى السائق ${driverName}. في انتظار الرد...`, 'info');
+      
+      // مراقبة رد السائق
+      tripRef.on('value', (snapshot) => {
+        const trip = snapshot.val();
+        if (trip && trip.status === 'accepted') {
+          showNotification('تم قبول الطلب! 🎉', `السائق ${driverName} وافق على طلبك. سيصل إليك خلال ${trip.estimatedTime || 'قريباً'}`, 'success');
+          startTrip(tripRef.key, trip);
+        } else if (trip && trip.status === 'rejected') {
+          showNotification('تم رفض الطلب', `السائق ${driverName} اعتذر عن قبول الطلب. يمكنك اختيار سائق آخر.`, 'error');
+          selectedDriver = null;
+        }
+      });
+    });
+  }
+
+  // مراقبة طلبات الرحلات للسائقين
+  function watchTripRequests() {
+    if (window.currentRole !== 'sayeq') return;
+
+    const requestsRef = window.db.ref('tripRequests');
+    requestsRef.on('child_added', (snapshot) => {
+      const request = snapshot.val();
+      if (request.driverId === window.currentUser.uid && request.status === 'pending') {
+        showTripRequestNotification(snapshot.key, request);
+      }
+    });
+  }
+
+  // عرض إشعار طلب الرحلة للسائق
+  function showTripRequestNotification(requestId, request) {
+    const notification = document.createElement('div');
+    notification.className = 'notification';
+    notification.innerHTML = `
+      <div class="notification-title">طلب رحلة جديد! 🚗</div>
+      <div class="notification-content">
+        <strong>الراكب:</strong> ${request.passengerName}<br>
+        <strong>الوجهة:</strong> ${request.destination}<br>
+        <strong>عدد الركاب:</strong> ${request.passengers}<br>
+        <strong>المسافة:</strong> ${request.distance} كم<br>
+        ${request.notes ? `<strong>ملاحظات:</strong> ${request.notes}<br>` : ''}
+      </div>
+      <div class="notification-actions">
+        <button class="accept-btn" onclick="acceptTrip('${requestId}', '${request.passengerName}')">قبول ✅</button>
+        <button class="reject-btn" onclick="rejectTrip('${requestId}')">رفض ❌</button>
+      </div>
+    `;
+    
+    document.body.appendChild(notification);
+    
+    // إزالة الإشعار بعد 30 ثانية
+    setTimeout(() => {
+      if (notification.parentNode) {
+        notification.parentNode.removeChild(notification);
+      }
+    }, 30000);
+  }
+
+  // قبول الرحلة
+  function acceptTrip(requestId, passengerName) {
+    const requestRef = window.db.ref(`tripRequests/${requestId}`);
+    requestRef.update({
+      status: 'accepted',
+      acceptedAt: Date.now(),
+      estimatedTime: '10-15 دقيقة'
+    }).then(() => {
+      // إزالة الإشعار
+      const notifications = document.querySelectorAll('.notification');
+      notifications.forEach(n => n.remove());
+      
+      // بدء الرحلة
+      requestRef.once('value', (snapshot) => {
+        const trip = snapshot.val();
+        startTrip(requestId, trip);
+      });
+      
+      showNotification('تم قبول الرحلة', `تم قبول رحلة ${passengerName}. توجه إلى موقع الراكب.`, 'success');
+    });
+  }
+
+  // رفض الرحلة
+  function rejectTrip(requestId) {
+    const requestRef = window.db.ref(`tripRequests/${requestId}`);
+    requestRef.update({
+      status: 'rejected',
+      rejectedAt: Date.now()
+    }).then(() => {
+      // إزالة الإشعار
+      const notifications = document.querySelectorAll('.notification');
+      notifications.forEach(n => n.remove());
+      
+      showNotification('تم رفض الرحلة', 'تم رفض طلب الرحلة.', 'info');
+    });
+  }
+
+  // بدء الرحلة
+  function startTrip(tripId, tripData) {
+    currentTrip = { id: tripId, data: tripData };
+    
+    // عرض حالة الرحلة
+    const tripStatus = document.getElementById('tripStatus');
+    const tripStatusText = document.getElementById('tripStatusText');
+    
+    tripStatus.style.display = 'block';
+    tripStatus.className = 'trip-status active';
+    
+    if (window.currentRole === 'rakib') {
+      tripStatusText.innerHTML = `
+        <strong>🚗 رحلة نشطة</strong><br>
+        السائق: ${tripData.driverName}<br>
+        الحالة: في الطريق إليك
+      `;
+    } else {
+      tripStatusText.innerHTML = `
+        <strong>🧍‍♀️ رحلة نشطة</strong><br>
+        الراكب: ${tripData.passengerName}<br>
+        الوجهة: ${tripData.destination}
+      `;
+      
+      // رسم المسار إلى الراكب
+      if (tripData.passengerLocation && currentLocation) {
+        drawRoute(currentLocation, tripData.passengerLocation);
+      }
+    }
+  }
+
+  // رسم المسار
+  function drawRoute(from, to) {
+    if (routeControl) {
+      currentMap.removeControl(routeControl);
+    }
+    
+    // استخدام Leaflet Routing Machine إذا كان متاحاً
+    if (typeof L.Routing !== 'undefined') {
+      routeControl = L.Routing.control({
+        waypoints: [
+          L.latLng(from.lat, from.lng),
+          L.latLng(to.lat, to.lng)
+        ],
+        routeWhileDragging: false,
+        addWaypoints: false,
+        createMarker: function() { return null; } // لا نريد علامات إضافية
+      }).addTo(currentMap);
+    } else {
+      // رسم خط مستقيم كبديل
+      const polyline = L.polyline([
+        [from.lat, from.lng],
+        [to.lat, to.lng]
+      ], { color: '#667eea', weight: 4 }).addTo(currentMap);
+      
+      // تكبير الخريطة لإظهار المسار
+      currentMap.fitBounds(polyline.getBounds());
+    }
+  }
+
+  // الاتصال بالسائق
+  function callDriver(driverId) {
+    // في التطبيق الحقيقي، ستحتاج لجلب رقم الهاتف من قاعدة البيانات
+    window.db.ref(`users/${driverId}`).once('value', (snapshot) => {
+      const driverData = snapshot.val();
+      if (driverData && driverData.phone) {
+        window.open(`tel:${driverData.phone}`);
+      } else {
+        alert('رقم الهاتف غير متاح');
+      }
+    });
+  }
+
+  // فتح الدردشة
+  function openChat(userId, userName) {
+    const chatContainer = document.getElementById('chatContainer');
+    const chatTitle = document.getElementById('chatTitle');
+    
+    chatTitle.textContent = `دردشة مع ${userName}`;
+    chatContainer.style.display = 'flex';
+    
+    // تحميل الرسائل السابقة
+    loadChatMessages(userId);
+    
+    // مراقبة الرسائل الجديدة
+    watchChatMessages(userId);
+  }
+
+  // إغلاق الدردشة
+  function closeChat() {
+    document.getElementById('chatContainer').style.display = 'none';
+  }
+
+  // تحميل رسائل الدردشة
+  function loadChatMessages(userId) {
+    const chatId = [window.currentUser.uid, userId].sort().join('_');
+    const messagesRef = window.db.ref(`chats/${chatId}/messages`);
+    
+    messagesRef.once('value', (snapshot) => {
+      const messages = snapshot.val();
+      const chatMessages = document.getElementById('chatMessages');
+      chatMessages.innerHTML = '';
+      
+      if (messages) {
+        Object.keys(messages).forEach(messageId => {
+          const message = messages[messageId];
+          displayMessage(message);
+        });
+      }
+    });
+  }
+
+  // مراقبة الرسائل الجديدة
+  function watchChatMessages(userId) {
+    const chatId = [window.currentUser.uid, userId].sort().join('_');
+    const messagesRef = window.db.ref(`chats/${chatId}/messages`);
+    
+    messagesRef.on('child_added', (snapshot) => {
+      const message = snapshot.val();
+      displayMessage(message);
+    });
+  }
+
+  // عرض الرسالة
+  function displayMessage(message) {
+    const chatMessages = document.getElementById('chatMessages');
+    const messageDiv = document.createElement('div');
+    messageDiv.className = `message ${message.senderId === window.currentUser.uid ? 'sent' : 'received'}`;
+    messageDiv.textContent = message.text;
+    
+    chatMessages.appendChild(messageDiv);
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+  }
+
+  // إرسال رسالة
+  function sendMessage() {
+    const chatInput = document.getElementById('chatInput');
+    const messageText = chatInput.value.trim();
+    
+    if (!messageText) return;
+    
+    // الحصول على معرف المستخدم الآخر من عنوان الدردشة
+    const chatTitle = document.getElementById('chatTitle').textContent;
+    const otherUserId = selectedDriver; // أو يمكن تخزينه في متغير عام
+    
+    if (!otherUserId) return;
+    
+    const chatId = [window.currentUser.uid, otherUserId].sort().join('_');
+    const messageRef = window.db.ref(`chats/${chatId}/messages`).push();
+    
+    const message = {
+      senderId: window.currentUser.uid,
+      senderName: window.currentUser.displayName,
+      text: messageText,
+      timestamp: Date.now()
+    };
+    
+    messageRef.set(message).then(() => {
+      chatInput.value = '';
+    });
+  }
+
+  // عرض الإشعارات
+  function showNotification(title, content, type = 'info') {
+    const notification = document.createElement('div');
+    notification.className = 'notification';
+    
+    let bgColor = '#667eea';
+    if (type === 'success') bgColor = '#48bb78';
+    if (type === 'error') bgColor = '#e53e3e';
+    
+    notification.style.borderRightColor = bgColor;
+    notification.innerHTML = `
+      <div class="notification-title">${title}</div>
+      <div class="notification-content">${content}</div>
+    `;
+    
+    document.body.appendChild(notification);
+    
+    setTimeout(() => {
+      if (notification.parentNode) {
+        notification.parentNode.removeChild(notification);
+      }
+    }, 5000);
+  }
+
+  // تحديث حالة السائق
+  function updateDriverStatus() {
+    if (window.currentRole !== 'sayeq' || !window.currentUser) return;
+    
+    const status = document.getElementById('driverStatus').value;
+    const locationRef = window.db.ref(`locations/${window.currentUser.uid}`);
+    
+    locationRef.update({ status: status });
+  }
+
+  function validatePhone(phone) {
+    const phoneRegex = /^(06|07|05)\d{8}$/;
+    return phoneRegex.test(phone);
+  }
+
+  function submitPassengerInfo() {
+    const name = document.getElementById("passengerName").value.trim();
+    const phone = document.getElementById("passengerPhone").value.trim();
+    const idCard = document.getElementById("passengerIdCard").files[0];
+    
+    if (!name) {
+      showMessage('error', 'يرجى إدخال الاسم الكامل', 'passenger');
+      return;
+    }
+    
+    if (!phone || !validatePhone(phone)) {
+      showMessage('error', 'يرجى إدخال رقم هاتف صحيح', 'passenger');
+      return;
+    }
+    
+    if (!idCard) {
+      showMessage('error', 'يرجى اختيار صورة بطاقة الهوية', 'passenger');
+      return;
+    }
+    
+    // حفظ معلومات الراكب في Firebase
+    const userRef = window.db.ref(`users/${window.currentUser.uid}`);
+    userRef.update({
+      phone: phone,
+      fullName: name,
+      profileComplete: true
+    });
+    
+    showMessage('success', 'تم حفظ المعلومات بنجاح!', 'passenger');
+    
+    setTimeout(() => {
+      showPage("mapPage");
+      loadMap(name);
+    }, 1500);
+  }
+
+  function startDriverMap() {
+    const name = document.getElementById("driverName").value.trim();
+    const phone = document.getElementById("driverPhone").value.trim();
+    const carType = document.getElementById("carType").value.trim();
+    const carColor = document.getElementById("carColor").value.trim();
+    const plateNumber = document.getElementById("plateNumber").value.trim();
+    const driverId = document.getElementById("driverId").files[0];
+    const carCheck = document.getElementById("carCheck").files[0];
+    
+    if (!name || !phone || !carType || !carColor || !plateNumber) {
+      showMessage('error', 'يرجى ملء جميع الحقول المطلوبة', 'driver');
+      return;
+    }
+    
+    if (!validatePhone(phone)) {
+      showMessage('error', 'يرجى إدخال رقم هاتف صحيح', 'driver');
+      return;
+    }
+    
+    if (!driverId || !carCheck) {
+      showMessage('error', 'يرجى رفع جميع الوثائق المطلوبة', 'driver');
+      return;
+    }
+    
+    // حفظ معلومات السائق في Firebase
+    const userRef = window.db.ref(`users/${window.currentUser.uid}`);
+    userRef.update({
+      phone: phone,
+      fullName: name,
+      carType: carType,
+      carColor: carColor,
+      plateNumber: plateNumber,
+      profileComplete: true
+    });
+    
+    showMessage('success', 'تم حفظ المعلومات بنجاح!', 'driver');
+    
+    setTimeout(() => {
+      showPage("mapPage");
+      loadMap(name);
+    }, 1500);
+  }
+
+  function showDeclaration() {
+    const name = document.getElementById("driverName").value.trim();
+    if (!name) {
+      showMessage('error', 'يرجى إدخال الاسم أولاً', 'driver');
+      return;
+    }
+    
+    const declarationBox = document.getElementById("declarationBox");
+    declarationBox.style.display = "block";
+    declarationBox.innerHTML = `
+      <h4>تعهد السائق</h4>
+      <p>أنا المتعهد السيد/ة <strong>${name}</strong> أقر وأتعهد بما يلي:</p>
+      <ul style="text-align: right; line-height: 1.8;">
+        <li>الالتزام بقوانين المرور والسلامة العامة</li>
+        <li>المحافظة على سلامة الركاب</li>
+        <li>عدم القيادة تحت تأثير أي مواد مخدرة أو كحولية</li>
+        <li>الالتزام بالأسعار المحددة من قبل المنصة</li>
+        <li>التعامل بأدب واحترام مع جميع الركاب</li>
+      </ul>
+      <p><strong>التوقيع:</strong> ${name}</p>
+      <p><strong>التاريخ:</strong> ${new Date().toLocaleDateString('ar-DZ')}</p>
+    `;
+  }
+
+  function activateRide() {
+    if (window.currentRole === 'rakib') {
+      const destination = document.getElementById("destination").value.trim();
+      const passengers = document.getElementById("passengers").value;
+      
+      if (!destination) {
+        alert("يرجى إدخال الوجهة");
+        return;
+      }
+      
+      if (!passengers || passengers < 1 || passengers > 8) {
+        alert("يرجى إدخال عدد صحيح للركاب (1-8)");
+        return;
+      }
+      
+      alert(`🔍 جاري البحث عن سائقين متاحين في منطقتك...`);
+    } else {
+      // تفعيل خدمة السائق
+      const availableSeats = document.getElementById("availableSeats").value;
+      const driverNotes = document.getElementById("driverNotes").value.trim();
+      
+      if (!availableSeats || availableSeats < 1 || availableSeats > 8) {
+        alert("يرجى إدخال عدد صحيح للمقاعد المتاحة (1-8)");
+        return;
+      }
+      
+      // تحديث حالة السائق إلى متاح
+      document.getElementById('driverStatus').value = 'available';
+      updateDriverStatus();
+      
+      alert(`🚗 تم تفعيل خدمتك بنجاح! أنت الآن متاح للركاب.`);
+    }
+  }
+
+  function logout() {
+    if (confirm("هل أنت متأكد من تسجيل الخروج؟")) {
+      // إزالة الموقع من قاعدة البيانات
+      if (window.currentUser) {
+        window.db.ref(`locations/${window.currentUser.uid}`).remove();
+      }
+      
+      localStorage.clear();
+      if (currentMap) {
+        currentMap.remove();
+        currentMap = null;
+      }
+      
+      // تسجيل الخروج من Firebase
+      window.auth.signOut();
+      
+      showPage("loginPage");
+    }
+  }
+
+  // تحسين تجربة رفع الملفات
+  document.addEventListener('DOMContentLoaded', function() {
+    const fileInputs = document.querySelectorAll('input[type="file"]');
+    fileInputs.forEach(input => {
+      input.addEventListener('change', function() {
+        const label = document.querySelector(`label[for="${this.id}"]`);
+        if (this.files.length > 0) {
+          label.style.borderColor = '#48bb78';
+          label.style.backgroundColor = '#f0fff4';
+          label.innerHTML = `✅ تم اختيار الملف: ${this.files[0].name}`;
+        }
+      });
+    });
+
+    // إضافة مستمع لإرسال الرسائل بالضغط على Enter
+    document.getElementById('chatInput').addEventListener('keypress', function(e) {
+      if (e.key === 'Enter') {
+        sendMessage();
+      }
+    });
+  });
+</script>
+
+</body>
+</html>
