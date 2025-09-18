@@ -7,7 +7,7 @@
   <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
   <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;600;700&display=swap" rel="stylesheet">
   
-  <script type="module">
+ <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
     import { getDatabase, ref, set, get, child, onValue, push, remove, update } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
     import { getAuth, signInWithPopup, GoogleAuthProvider } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
@@ -33,6 +33,27 @@
     window.currentRole = null;
     window.db = db;
     window.auth = auth;
+
+    // مثال: حفظ بيانات الراكب
+    function submitPassengerInfo() {
+      const name = document.getElementById("name").value;
+      const phone = document.getElementById("phone").value;
+
+      const passengerRef = ref(db, "passengers/" + Date.now()); // ID unique
+      set(passengerRef, {
+        name: name,
+        phone: phone
+      })
+      .then(() => {
+        alert("✅ تم حفظ بيانات الراكب");
+      })
+      .catch((error) => {
+        console.error("❌ خطأ في الحفظ:", error);
+      });
+    }
+
+    window.submitPassengerInfo = submitPassengerInfo;
+</script>
 
     window.signInWithGoogle = () => {
       const roleInput = document.querySelector('input[name="role"]:checked');
@@ -1478,4 +1499,5 @@
 
 </body>
 </html>
+
 
