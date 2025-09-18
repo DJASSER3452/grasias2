@@ -26,6 +26,7 @@
     }
   </style>
 
+  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
     import { getDatabase, ref, set, get } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
@@ -150,7 +151,6 @@
         });
     };
   </script>
-  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
 </head>
 <body>
   <h1>🚖 GRASIAS</h1>
@@ -163,7 +163,6 @@
     <br><br>
     <button onclick="signInWithGoogle()">تسجيل الدخول بجوجل</button>
   </div>
-
   <!-- صفحة الراكب -->
   <div id="passengerPage" class="page">
     <h2>📌 بيانات الراكب</h2>
@@ -1585,6 +1584,7 @@
 
 </body>
 </html>
+
 
 
 
