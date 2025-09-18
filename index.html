@@ -6,12 +6,32 @@
   <title>GRASIAS</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
   <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;600;700&display=swap" rel="stylesheet">
-  
- <script type="module">
+
+  <style>
+    body {
+      font-family: 'Cairo', sans-serif;
+      margin: 0;
+      padding: 0;
+      text-align: center;
+    }
+    #map {
+      height: 400px;
+      width: 100%;
+    }
+    .page {
+      display: none;
+    }
+    .active {
+      display: block;
+    }
+  </style>
+
+  <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-    import { getDatabase, ref, set, get, child, onValue, push, remove, update } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
+    import { getDatabase, ref, set, get } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
     import { getAuth, signInWithPopup, GoogleAuthProvider } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 
+    // إعداد Firebase
     const firebaseConfig = {
       apiKey: "AIzaSyAekz29R9IwY1pygd4Mic5AX8XZ7A7Z4Fs",
       authDomain: "grasias-d7830.firebaseapp.com",
@@ -34,12 +54,45 @@
     window.db = db;
     window.auth = auth;
 
-    // مثال: حفظ بيانات الراكب
+    // عرض الصفحات
+    function showPage(pageId) {
+      document.querySelectorAll(".page").forEach(p => p.classList.remove("active"));
+      document.getElementById(pageId).classList.add("active");
+    }
+    window.showPage = showPage;
+
+    // تحميل الخريطة
+    function loadMap(userName) {
+      const map = L.map("map").setView([36.7538, 3.0588], 13); // الجزائر العاصمة
+      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        attribution: '&copy; OpenStreetMap'
+      }).addTo(map);
+
+      L.marker([36.7538, 3.0588]).addTo(map)
+        .bindPopup(`مرحباً ${userName}!`).openPopup();
+    }
+    window.loadMap = loadMap;
+
+    // تتبع الموقع
+    function startLocationTracking() {
+      if (navigator.geolocation) {
+        navigator.geolocation.watchPosition((position) => {
+          console.log("📍 الموقع:", position.coords.latitude, position.coords.longitude);
+        }, (error) => {
+          console.error("❌ خطأ في تحديد الموقع:", error);
+        });
+      } else {
+        alert("المتصفح لا يدعم GPS");
+      }
+    }
+    window.startLocationTracking = startLocationTracking;
+
+    // حفظ بيانات الراكب
     function submitPassengerInfo() {
       const name = document.getElementById("name").value;
       const phone = document.getElementById("phone").value;
 
-      const passengerRef = ref(db, "passengers/" + Date.now()); // ID unique
+      const passengerRef = ref(db, "passengers/" + Date.now());
       set(passengerRef, {
         name: name,
         phone: phone
@@ -51,9 +104,10 @@
         console.error("❌ خطأ في الحفظ:", error);
       });
     }
-
     window.submitPassengerInfo = submitPassengerInfo;
-window.signInWithGoogle = () => {
+
+    // تسجيل الدخول بجوجل
+    window.signInWithGoogle = () => {
       const roleInput = document.querySelector('input[name="role"]:checked');
       if (!roleInput) {
         alert("يرجى اختيار الدور قبل تسجيل الدخول");
@@ -81,7 +135,7 @@ window.signInWithGoogle = () => {
                 role: window.currentRole,
                 createdAt: new Date().toISOString()
               });
-              
+
               if (window.currentRole === "rakib") {
                 showPage("passengerPage");
               } else {
@@ -96,7 +150,42 @@ window.signInWithGoogle = () => {
         });
     };
   </script>
-  
+  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+</head>
+<body>
+  <h1>🚖 GRASIAS</h1>
+
+  <!-- صفحة تسجيل الدخول -->
+  <div id="loginPage" class="page active">
+    <h2>اختر دورك</h2>
+    <input type="radio" name="role" value="rakib"> راكب
+    <input type="radio" name="role" value="sayek"> سائق
+    <br><br>
+    <button onclick="signInWithGoogle()">تسجيل الدخول بجوجل</button>
+  </div>
+
+  <!-- صفحة الراكب -->
+  <div id="passengerPage" class="page">
+    <h2>📌 بيانات الراكب</h2>
+    <input id="name" type="text" placeholder="الاسم"><br><br>
+    <input id="phone" type="text" placeholder="رقم الهاتف"><br><br>
+    <button onclick="submitPassengerInfo()">حفظ البيانات</button>
+  </div>
+
+  <!-- صفحة السائق -->
+  <div id="driverPage" class="page">
+    <h2>🚗 صفحة السائق</h2>
+    <p>مرحباً بك أيها السائق</p>
+  </div>
+
+  <!-- صفحة الخريطة -->
+  <div id="mapPage" class="page">
+    <h2>🗺️ الخريطة</h2>
+    <div id="map"></div>
+  </div>
+</body>
+</html>
+
   <style>
     * {
       box-sizing: border-box;
@@ -1497,6 +1586,7 @@ window.signInWithGoogle = () => {
 
 </body>
 </html>
+
 
 
 
